@@ -1,0 +1,5 @@
+"node_modules/" 
+"__pycache__/" 
+"*.pyc" 
+".env" 
+"orbisv-backend/projects/IRIS-3/branches/" 
