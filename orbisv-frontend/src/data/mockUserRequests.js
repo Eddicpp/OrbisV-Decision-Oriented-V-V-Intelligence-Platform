@@ -118,27 +118,67 @@ export function computeSatisfactionScore(request, requirements) {
   }
 }
 
+// Mappa dominio req -> subsistema
+const DOMAIN_TO_SUBSYSTEM = {
+  optical:         ['optical', 'startracker'],
+  thermal:         ['thermal', 'solar'],
+  mechanical:      ['mechanical', 'structure'],
+  data_processing: ['dataproc'],
+}
+
 // Calcola score con requirements modificati dal branch
 export function computeBranchSatisfactionScore(request, requirements, cascadeResult) {
-  const affectedReqs = cascadeResult?.affected_requirements || []
-  const issues       = cascadeResult?.cascade_issues || []
+  const affectedReqs    = cascadeResult?.affected_requirements || []
+  const affectedSubs    = cascadeResult?.affected_subsystems   || []
+  const issues          = cascadeResult?.cascade_issues        || []
+  const geometryChanges = cascadeResult?.geometry_changes      || []
 
-  // crea copia requirements con compliance degradata per req impattati
+  // Trova subsistemi impattati da geometry_changes anche se non in affected_subsystems
+  const changedSubs = [
+    ...affectedSubs,
+    ...geometryChanges.map(g => g.subsystem).filter(Boolean),
+  ]
+
+  // Costruisce mappa req -> severity dell'impatto
+  const reqImpactMap = {}
+
+  // 1. Req esplicitamente listati in affected_requirements
+  affectedReqs.forEach(reqId => {
+    const issue = issues.find(i => i.requirement === reqId)
+    reqImpactMap[reqId] = issue?.severity || 'minor'
+  })
+
+  // 2. Req collegati ai subsistemi impattati (impatto indiretto)
+  requirements.forEach(r => {
+    if (reqImpactMap[r.id]) return // gia impattato direttamente
+    const reqDomain = r.domain
+    const domainSubs = DOMAIN_TO_SUBSYSTEM[reqDomain] || []
+    const isSubImpacted = domainSubs.some(s => changedSubs.includes(s))
+    if (isSubImpacted) {
+      // trova la severity peggiore degli issue su quel subsistema
+      const subIssues = issues.filter(i => domainSubs.includes(i.subsystem))
+      const worstSeverity = subIssues.some(i => i.severity === 'critical') ? 'critical'
+        : subIssues.some(i => i.severity === 'major') ? 'major'
+        : subIssues.length > 0 ? 'minor'
+        : null
+      if (worstSeverity) reqImpactMap[r.id] = worstSeverity
+    }
+  })
+
+  // Costruisce requirements modificati
   const modifiedReqs = requirements.map(r => {
-    if (!affectedReqs.includes(r.id)) return r
+    const severity = reqImpactMap[r.id]
+    if (!severity) return r
 
-    // trova severity issue per questo req
-    const relatedIssue = issues.find(i => i.requirement === r.id)
-    const severity     = relatedIssue?.severity || 'minor'
-
-    const degradation = severity === 'critical' ? 0.5
+    const degradation = severity === 'critical' ? 0.45
       : severity === 'major' ? 0.25
-      : 0.1
+      : 0.08
 
     return {
       ...r,
       compliance: r.compliance !== null ? Math.max(0, r.compliance - degradation) : null,
-      evidences:  [], // evidenze invalidate
+      // svuota evidenze solo se impatto diretto (req esplicitamente invalidato)
+      evidences: affectedReqs.includes(r.id) ? [] : r.evidences,
     }
   })
 

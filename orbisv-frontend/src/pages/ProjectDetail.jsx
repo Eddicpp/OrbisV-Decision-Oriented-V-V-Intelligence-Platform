@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PayloadViewer3D from '../components/PayloadViewer3D'
 import ECSSPanel from '../components/ECSSPanel'
@@ -6,14 +6,24 @@ import { SCENARIOS, USER_NEEDS, REQUIREMENTS, OPEN_NCRS } from '../data/mockIRIS
 import { DECISION_CONFIG } from '../data/mockProjects'
 import BranchView from '../components/BranchView'
 import UserSatisfactionPanel from '../components/UserSatisfactionPanel'
+import ManagerView from '../components/ManagerView'
+import DatasheetPanel from '../components/DatasheetPanel'
+import { computeReadiness } from '../data/readiness'
 
 const SCENARIO_KEYS = ['nominal', 'thermal', 'cdr', 'launch']
 
+const MILESTONE_MAP = {
+  nominal: 'CDR',
+  thermal: 'CDR',
+  cdr:     'CDR',
+  launch:  'LAUNCH',
+}
+
 const STATUS_STYLES = {
-  ok:      { dot: 'bg-green-500',  text: 'text-green-400',  label: 'Compliant' },
-  warn:    { dot: 'bg-amber-500',  text: 'text-amber-400',  label: 'Warning'   },
-  fail:    { dot: 'bg-red-500',    text: 'text-red-400',    label: 'Non compliant' },
-  pending: { dot: 'bg-gray-500',   text: 'text-gray-400',   label: 'Pending'   },
+  ok:      { dot: 'bg-green-500', text: 'text-green-400', label: 'Compliant'     },
+  warn:    { dot: 'bg-amber-500', text: 'text-amber-400', label: 'Warning'       },
+  fail:    { dot: 'bg-red-500',   text: 'text-red-400',   label: 'Non compliant' },
+  pending: { dot: 'bg-gray-500',  text: 'text-gray-400',  label: 'Pending'       },
 }
 
 const VERDICT_STYLES = {
@@ -22,19 +32,29 @@ const VERDICT_STYLES = {
   CONDITIONAL: 'bg-amber-900 text-amber-300 border-amber-700',
 }
 
-function DecisionCard({ scenario }) {
-  const cfg = DECISION_CONFIG[scenario.decision]
+function DecisionCard({ readiness }) {
+  const cfg = DECISION_CONFIG[readiness.decision]
   return (
-    <div className={`rounded-xl border-2 ${cfg.border} ${cfg.bg} p-5`}>
+    <div className={`rounded-xl border-2 ${cfg.border} ${cfg.bg} p-4`}>
       <div className="flex items-center justify-between mb-2">
         <span className={`text-2xl font-bold ${cfg.color}`}>{cfg.label}</span>
-        <span className={`text-sm font-semibold ${cfg.color}`}>
-          {scenario.confidence}% confidence
-        </span>
+        <span className={`text-sm font-semibold ${cfg.color}`}>{readiness.confidence}% confidence</span>
       </div>
-      <div className="w-full bg-white bg-opacity-30 rounded-full h-2">
-        <div className={`h-2 rounded-full ${cfg.dot}`} style={{ width: `${scenario.confidence}%` }} />
+      <div className="w-full bg-white bg-opacity-30 rounded-full h-2 mb-2">
+        <div className={`h-2 rounded-full ${cfg.dot}`} style={{ width: `${readiness.confidence}%` }} />
       </div>
+      {readiness.blockingIssues.length > 0 && (
+        <div className="space-y-1 mt-2">
+          {readiness.blockingIssues.map((issue, i) => (
+            <div key={i} className={`flex items-start gap-1.5 text-xs ${
+              issue.type === 'blocker' ? 'text-red-300' : 'text-amber-300'
+            }`}>
+              <span className="shrink-0">{issue.type === 'blocker' ? 'X' : '!'}</span>
+              <span>{issue.message}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -73,9 +93,8 @@ function TraceabilityRow({ need, reqs }) {
         <span className="text-xs font-mono font-semibold text-blue-400 shrink-0">{need.id}</span>
         <span className="text-sm text-gray-200 flex-1">{need.description}</span>
         <span className={`text-sm font-semibold shrink-0 ${scoreColor}`}>{pct}%</span>
-        <span className="text-gray-500 text-xs shrink-0">{open ? '▲' : '▼'}</span>
+        <span className="text-gray-500 text-xs shrink-0">{open ? 'v' : '>'}</span>
       </button>
-
       {open && (
         <div className="bg-gray-900 divide-y divide-gray-800">
           {needReqs.map(req => (
@@ -91,18 +110,13 @@ function TraceabilityRow({ need, reqs }) {
                     <span className={`text-sm font-semibold ${
                       Math.round(req.compliance * 100) >= 80 ? 'text-green-400' :
                       Math.round(req.compliance * 100) >= 60 ? 'text-amber-400' : 'text-red-400'
-                    }`}>
-                      {Math.round(req.compliance * 100)}%
-                    </span>
+                    }`}>{Math.round(req.compliance * 100)}%</span>
                   ) : (
                     <span className="text-xs text-gray-500">N/A</span>
                   )}
-                  {req.critical && (
-                    <span className="block text-xs text-red-400 mt-0.5">critical</span>
-                  )}
+                  {req.critical && <span className="block text-xs text-red-400 mt-0.5">critical</span>}
                 </div>
               </div>
-
               {req.evidences.length > 0 ? (
                 <div className="ml-16 space-y-1">
                   {req.evidences.map(ev => (
@@ -119,7 +133,7 @@ function TraceabilityRow({ need, reqs }) {
                 </div>
               ) : (
                 <div className="ml-16">
-                  <span className="text-xs text-red-400 italic">No V&V evidence — gap in traceability</span>
+                  <span className="text-xs text-red-400 italic">No V&V evidence -- gap in traceability</span>
                 </div>
               )}
             </div>
@@ -142,13 +156,11 @@ function NCRList({ ncrs }) {
               ncr.severity === 'major'
                 ? 'bg-red-900 text-red-300 border-red-700'
                 : 'bg-amber-900 text-amber-300 border-amber-700'
-            }`}>
-              {ncr.severity}
-            </span>
+            }`}>{ncr.severity}</span>
             <span className="text-xs text-gray-500 ml-auto">{ncr.opened}</span>
           </div>
           <p className="text-sm text-gray-300">{ncr.title}</p>
-          <p className="text-xs text-gray-500 mt-0.5">Owner: {ncr.owner} — Req: {ncr.requirement}</p>
+          <p className="text-xs text-gray-500 mt-0.5">Owner: {ncr.owner} -- Req: {ncr.requirement}</p>
         </div>
       ))}
     </div>
@@ -156,20 +168,31 @@ function NCRList({ ncrs }) {
 }
 
 const TABS = [
-  { id: 'traceability',  label: 'Traceability' },
-  { id: 'satisfaction',  label: '🎯 User Satisfaction' },
-  { id: 'ncr',           label: 'NCRs' },
-  { id: 'ecss',          label: 'ECSS Checklist' },
-  { id: 'impact',        label: '⚡ Impact Analysis' },
+  { id: 'traceability', label: 'Traceability'         },
+  { id: 'satisfaction', label: 'User Satisfaction'    },
+  { id: 'ncr',          label: 'NCRs'                 },
+  { id: 'ecss',         label: 'ECSS Checklist'       },
+  { id: 'datasheets',   label: 'Datasheets'           },
+  { id: 'impact',       label: 'Impact Analysis'      },
 ]
 
 export default function ProjectDetail() {
   const navigate = useNavigate()
   const [activeScenario, setActiveScenario] = useState('nominal')
-  const [hoveredSystem, setHoveredSystem] = useState(null)
-  const [activeTab, setActiveTab] = useState('traceability')
+  const [hoveredSystem, setHoveredSystem]   = useState(null)
+  const [activeTab, setActiveTab]           = useState('traceability')
+  const [viewMode, setViewMode]             = useState('technical')
 
+  // Calcola readiness dinamicamente dal milestone dello scenario
+  const milestone = MILESTONE_MAP[activeScenario] || 'CDR'
+  const readiness = useMemo(() => computeReadiness(milestone), [milestone])
+
+  // Per il viewer 3D usa i subsystems calcolati dal readiness
+  const viewerSubsystems = readiness.subsystems
+
+  // Per la compatibilita con SCENARIOS (per BranchView e altri componenti)
   const scenario = SCENARIOS[activeScenario]
+
   const isImpact = activeTab === 'impact'
 
   return (
@@ -181,11 +204,26 @@ export default function ProjectDetail() {
           onClick={() => navigate('/')}
           className="text-gray-400 hover:text-white text-sm flex items-center gap-1.5 transition-colors"
         >
-          ← Projects
+          &larr; Projects
         </button>
         <span className="text-gray-600">/</span>
         <span className="text-white font-semibold">IRIS-3</span>
-        <span className="text-gray-500 text-sm">Optical EO Payload — ESA</span>
+        <span className="text-gray-500 text-sm">Optical EO Payload -- ESA</span>
+
+        <div className="flex bg-gray-800 border border-gray-700 rounded-lg p-0.5 ml-4">
+          {['technical', 'manager'].map(v => (
+            <button
+              key={v}
+              onClick={() => setViewMode(v)}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all capitalize ${
+                viewMode === v ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              {v === 'technical' ? 'Technical' : 'Manager'}
+            </button>
+          ))}
+        </div>
+
         <div className="ml-auto flex items-center gap-2 flex-wrap">
           <span className="text-xs text-gray-500">Scenario:</span>
           {SCENARIO_KEYS.map(key => (
@@ -206,163 +244,185 @@ export default function ProjectDetail() {
 
       <div className="flex flex-1 overflow-hidden">
 
-        {/* LEFT — nascosto in tab impact */}
-        {!isImpact && (
-          <div className="w-80 border-r border-gray-800 flex flex-col shrink-0">
-            <div className="relative" style={{ height: '320px' }}>
-              <PayloadViewer3D
-                subsystems={scenario.subsystems}
-                onHover={setHoveredSystem}
-              />
-              {hoveredSystem && scenario.subsystems[hoveredSystem] && (
-                <div className="absolute bottom-3 left-3 right-3 bg-gray-900 bg-opacity-90 border border-gray-700 rounded-lg px-3 py-2 pointer-events-none">
-                  <p className="text-xs font-semibold text-white capitalize">
-                    {hoveredSystem.replace('_', ' ')}
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    {scenario.subsystems[hoveredSystem].detail}
-                  </p>
-                </div>
-              )}
-            </div>
-            <div className="border-t border-gray-800 p-3 space-y-1 overflow-y-auto">
-              <p className="text-xs text-gray-500 px-1 mb-2 uppercase tracking-wider">Subsystems</p>
-              {Object.entries(scenario.subsystems).map(([id, data]) => (
-                <SubsystemRow key={id} id={id} data={data} isHovered={hoveredSystem === id} />
-              ))}
-            </div>
+        {/* MANAGER VIEW */}
+        {viewMode === 'manager' && (
+          <div className="flex-1 overflow-y-auto p-6">
+            <ManagerView activeScenario={activeScenario} readiness={readiness} />
           </div>
         )}
 
-        {/* CENTER — tabs */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="border-b border-gray-800 px-6 flex gap-1 shrink-0">
-            {TABS.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-3 text-sm border-b-2 transition-colors ${
-                  activeTab === tab.id
-                    ? 'border-blue-500 text-white'
-                    : 'border-transparent text-gray-400 hover:text-white'
-                }`}
-              >
-                {tab.id === 'ncr' ? `NCRs (${OPEN_NCRS.length})` : tab.label}
-              </button>
-            ))}
-          </div>
-
-          <div className={`flex-1 overflow-y-auto ${isImpact ? '' : 'p-6'}`}>
-
-            {activeTab === 'traceability' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-sm font-semibold text-gray-300">
-                    User Needs → Requirements → V&V Evidence
-                  </h2>
-                  <span className="text-xs text-gray-500">
-                    {REQUIREMENTS.filter(r => r.evidences.length > 0).length}/{REQUIREMENTS.length} req with evidence
-                  </span>
+        {/* TECHNICAL VIEW */}
+        {viewMode === 'technical' && (
+          <>
+            {/* LEFT -- nascosto in tab impact */}
+            {!isImpact && (
+              <div className="w-80 border-r border-gray-800 flex flex-col shrink-0">
+                <div className="relative" style={{ height: '320px' }}>
+                  <PayloadViewer3D
+                    subsystems={viewerSubsystems}
+                    onHover={setHoveredSystem}
+                  />
+                  {hoveredSystem && viewerSubsystems[hoveredSystem] && (
+                    <div className="absolute bottom-3 left-3 right-3 bg-gray-900 bg-opacity-90 border border-gray-700 rounded-lg px-3 py-2 pointer-events-none">
+                      <p className="text-xs font-semibold text-white capitalize">
+                        {hoveredSystem.replace('_', ' ')}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {viewerSubsystems[hoveredSystem].detail}
+                      </p>
+                    </div>
+                  )}
                 </div>
-                {USER_NEEDS.map(need => (
-                  <TraceabilityRow key={need.id} need={need} reqs={REQUIREMENTS} />
+                <div className="border-t border-gray-800 p-3 space-y-1 overflow-y-auto">
+                  <p className="text-xs text-gray-500 px-1 mb-2 uppercase tracking-wider">Subsystems</p>
+                  {Object.entries(viewerSubsystems).map(([id, data]) => (
+                    <SubsystemRow key={id} id={id} data={data} isHovered={hoveredSystem === id} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* CENTER -- tabs */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="border-b border-gray-800 px-6 flex gap-1 shrink-0 overflow-x-auto">
+                {TABS.map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`px-4 py-3 text-sm border-b-2 transition-colors whitespace-nowrap ${
+                      activeTab === tab.id
+                        ? 'border-blue-500 text-white'
+                        : 'border-transparent text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {tab.id === 'ncr' ? `NCRs (${OPEN_NCRS.length})` : tab.label}
+                  </button>
                 ))}
               </div>
-            )}
 
-            {activeTab === 'satisfaction' && (
-              <UserSatisfactionPanel />
-            )}
+              <div className={`flex-1 overflow-y-auto ${isImpact ? '' : 'p-6'}`}>
 
-            {activeTab === 'ncr' && (
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-sm font-semibold text-gray-300">Open Non-Conformance Reports</h2>
-                  <span className="text-xs text-gray-500">{OPEN_NCRS.length} open</span>
-                </div>
-                <NCRList ncrs={OPEN_NCRS} />
-              </div>
-            )}
-
-            {activeTab === 'ecss' && <ECSSPanel />}
-
-            {activeTab === 'impact' && (
-              <div className="h-full">
-                <BranchView activeScenario={activeScenario} projectId="IRIS-3" />
-              </div>
-            )}
-
-          </div>
-        </div>
-
-        {/* RIGHT — nascosto in tab impact */}
-        {!isImpact && (
-          <div className="w-72 border-l border-gray-800 p-4 flex flex-col gap-4 shrink-0 overflow-y-auto">
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Decision</p>
-              <DecisionCard scenario={scenario} />
-            </div>
-
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Domain Scores</p>
-              <div className="space-y-3">
-                {Object.entries(scenario.subsystems).map(([id, data]) => {
-                  const st = STATUS_STYLES[data.status] || STATUS_STYLES.pending
-                  return (
-                    <div key={id}>
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-xs text-gray-400 capitalize">{id.replace('_', ' ')}</span>
-                        <span className={`text-xs font-semibold ${st.text}`}>{data.score}%</span>
-                      </div>
-                      <div className="bg-gray-700 rounded-full h-1.5">
-                        <div
-                          className={`h-1.5 rounded-full transition-all duration-500 ${
-                            data.status === 'ok'   ? 'bg-green-500' :
-                            data.status === 'warn' ? 'bg-amber-500' :
-                            data.status === 'fail' ? 'bg-red-500'   : 'bg-gray-500'
-                          }`}
-                          style={{ width: `${data.score}%` }}
-                        />
-                      </div>
+                {activeTab === 'traceability' && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-sm font-semibold text-gray-300">
+                        User Needs to Requirements to V&V Evidence
+                      </h2>
+                      <span className="text-xs text-gray-500">
+                        {REQUIREMENTS.filter(r => r.evidences.length > 0).length}/{REQUIREMENTS.length} req with evidence
+                      </span>
                     </div>
-                  )
-                })}
+                    {USER_NEEDS.map(need => (
+                      <TraceabilityRow key={need.id} need={need} reqs={REQUIREMENTS} />
+                    ))}
+                  </div>
+                )}
+
+                {activeTab === 'satisfaction' && (
+                  <UserSatisfactionPanel />
+                )}
+
+                {activeTab === 'ncr' && (
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-sm font-semibold text-gray-300">Open Non-Conformance Reports</h2>
+                      <span className="text-xs text-gray-500">{OPEN_NCRS.length} open</span>
+                    </div>
+                    <NCRList ncrs={OPEN_NCRS} />
+                  </div>
+                )}
+
+                {activeTab === 'ecss' && <ECSSPanel />}
+
+                {activeTab === 'datasheets' && (
+                  <DatasheetPanel activeSubsystem={hoveredSystem} />
+                )}
+
+                {activeTab === 'impact' && (
+                  <div className="h-full">
+                    <BranchView activeScenario={activeScenario} projectId="IRIS-3" />
+                  </div>
+                )}
+
               </div>
             </div>
 
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Milestone</p>
-              <div className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5">
-                <p className="text-white font-semibold">CDR</p>
-                <p className="text-xs text-gray-400">Critical Design Review</p>
-                <p className="text-xs text-gray-500 mt-1">Est. launch: June 2027</p>
-              </div>
-            </div>
+            {/* RIGHT -- nascosto in tab impact */}
+            {!isImpact && (
+              <div className="w-72 border-l border-gray-800 p-4 flex flex-col gap-4 shrink-0 overflow-y-auto">
+                <div>
+                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Decision</p>
+                  <DecisionCard readiness={readiness} />
+                </div>
 
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Coverage</p>
-              <div className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Requirements</span>
-                  <span className="text-white">483</span>
+                <div>
+                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Domain Scores</p>
+                  <div className="space-y-3">
+                    {Object.entries(readiness.subsystems).map(([id, data]) => {
+                      const st = STATUS_STYLES[data.status] || STATUS_STYLES.pending
+                      return (
+                        <div key={id}>
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="text-xs text-gray-400 capitalize">{id.replace('_', ' ')}</span>
+                            <span className={`text-xs font-semibold ${st.text}`}>{data.score}%</span>
+                          </div>
+                          <div className="bg-gray-700 rounded-full h-1.5">
+                            <div
+                              className={`h-1.5 rounded-full transition-all duration-500 ${
+                                data.status === 'ok'   ? 'bg-green-500' :
+                                data.status === 'warn' ? 'bg-amber-500' :
+                                data.status === 'fail' ? 'bg-red-500'   : 'bg-gray-500'
+                              }`}
+                              style={{ width: `${data.score}%` }}
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Verified</span>
-                  <span className="text-green-400">341</span>
+
+                <div>
+                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Milestone</p>
+                  <div className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5">
+                    <p className="text-white font-semibold">{milestone}</p>
+                    <p className="text-xs text-gray-400">
+                      {milestone === 'LAUNCH' ? 'Launch Readiness Review' : 'Critical Design Review'}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">Est. launch: June 2027</p>
+                  </div>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">With evidence</span>
-                  <span className="text-blue-400">
-                    {REQUIREMENTS.filter(r => r.evidences.length > 0).length}/{REQUIREMENTS.length}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Open NCRs</span>
-                  <span className="text-red-400">{OPEN_NCRS.length}</span>
+
+                <div>
+                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Coverage</p>
+                  <div className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Requirements</span>
+                      <span className="text-white">{REQUIREMENTS.length}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Critical req coverage</span>
+                      <span className={readiness.reqCoverage >= 80 ? 'text-green-400' : 'text-amber-400'}>
+                        {readiness.reqCoverage}%
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Tests done</span>
+                      <span className="text-blue-400">
+                        {readiness.testStats.done}/{readiness.testStats.total}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Open NCRs</span>
+                      <span className={OPEN_NCRS.length > 0 ? 'text-red-400' : 'text-green-400'}>
+                        {OPEN_NCRS.length}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
+            )}
+          </>
         )}
 
       </div>

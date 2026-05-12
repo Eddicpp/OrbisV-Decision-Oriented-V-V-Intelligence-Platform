@@ -100,7 +100,8 @@ Respond ONLY in valid JSON with this exact structure:
   "affected_requirements": ["L1-XXX-001"],
   "affected_subsystems": ["subsystem_id"],
   "go_nogo_impact": "GO|GO_WITH_CONSTRAINTS|NO_GO",
-  "confidence_delta": -15
+  "confidence_delta": -15,
+  "managerial_summary": "Plain language summary for program manager: what is the business impact of this change, which milestone is at risk, what needs to happen before CDR/launch, is customer notification required."
 }
 
 Be precise, technical, and conservative. If in doubt, flag the issue."""

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { USER_REQUESTS, computeSatisfactionScore, computeBranchSatisfactionScore } from '../data/mockUserRequests'
 import { REQUIREMENTS } from '../data/mockIRIS3'
+import { computeOperationalValidation } from '../data/readiness'
 
 function ScoreBar({ score, scoreBefore, small = false }) {
   const color = score >= 80 ? 'bg-green-500'
@@ -42,9 +43,24 @@ function StatusIcon({ ok, warn }) {
 function RequestCard({ request, requirements, cascadeResult, showBranchDiff }) {
   const [open, setOpen] = useState(false)
 
-  const main   = computeSatisfactionScore(request, requirements)
+  // Validazione operativa calcolata dai test reali
+  const opValidation = computeOperationalValidation(request.id)
+
+  // Nel branch: se ci sono test mancanti che riguardano questo need, op_validation diventa false
+  const missingTests    = cascadeResult?.missing_tests || []
+  const affectedSubs    = cascadeResult?.affected_subsystems || []
+  const branchOpValidation = showBranchDiff && cascadeResult ? {
+    performed: opValidation.performed &&
+      missingTests.length === 0 &&
+      opValidation.relevantTests?.every(t => !affectedSubs.includes(t.subsystem)),
+    description: missingTests.length > 0
+      ? `${missingTests.length} new tests required by change`
+      : opValidation.description,
+  } : opValidation
+
+  const main   = computeSatisfactionScore({ ...request, operational_validation: opValidation }, requirements)
   const branch = showBranchDiff && cascadeResult
-    ? computeBranchSatisfactionScore(request, requirements, cascadeResult)
+    ? computeBranchSatisfactionScore({ ...request, operational_validation: branchOpValidation }, requirements, cascadeResult)
     : null
 
   const isAffected = branch && branch.score !== main.score
