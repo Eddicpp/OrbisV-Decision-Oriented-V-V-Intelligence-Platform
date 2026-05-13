@@ -20,19 +20,6 @@ In space programs with development cycles of 5–15 years:
 
 ---
 
-## The Solution
-
-OrbisV provides:
-
-- **Unified digital thread** — user needs → requirements → V&V evidence in one place
-- **3D payload viewer** — subsystems colored by compliance status in real-time
-- **GO/NO-GO decision support** — explicit readiness assessment with confidence score
-- **AI-powered impact analysis** — local LLM identifies cascading problems from any change request
-- **User satisfaction scoring** — measures how well the current system satisfies original operational needs
-- **ECSS validation checklist** — per-subsystem activities mapped to real standards with direct PDF links
-
----
-
 ## Architecture
 
 ```
@@ -40,46 +27,36 @@ orbisv/
 ├── orbisv-frontend/          # React + Vite + Three.js + Tailwind
 │   └── src/
 │       ├── pages/
-│       │   ├── ProjectList.jsx       # Homepage — active projects overview
-│       │   └── ProjectDetail.jsx     # Project detail — all tabs
+│       │   ├── ProjectList.jsx
+│       │   └── ProjectDetail.jsx
 │       ├── components/
-│       │   ├── PayloadViewer3D.jsx   # Three.js 3D payload model
-│       │   ├── ECSSPanel.jsx         # ECSS validation checklist
-│       │   ├── UserSatisfactionPanel.jsx  # User needs satisfaction scoring
-│       │   └── BranchView.jsx        # Split view — main vs branch
+│       │   ├── PayloadViewer3D.jsx
+│       │   ├── ECSSPanel.jsx
+│       │   ├── UserSatisfactionPanel.jsx
+│       │   ├── BranchView.jsx
+│       │   ├── ManagerView.jsx
+│       │   ├── TestTimeline.jsx
+│       │   └── DatasheetPanel.jsx
 │       └── data/
-│           ├── mockProjects.js       # Project list mock data
-│           ├── mockIRIS3.js          # IRIS-3 full project data
-│           ├── mockECSS.js           # ECSS standards and checklists
-│           └── mockUserRequests.js   # User operational requirements
+│           ├── mockProjects.js
+│           ├── mockIRIS3.js
+│           ├── mockECSS.js
+│           ├── mockUserRequests.js
+│           ├── mockManagerial.js
+│           ├── mockDatasheets.js
+│           └── readiness.js
 │
-└── orbisv-backend/           # Python + FastAPI + Ollama + ReportLab
+└── orbisv-backend/
     ├── mock_data/
-    │   └── generate_pdf.py   # Generates structured project PDF
+    │   └── generate_pdf.py
     ├── projects/
     │   └── IRIS-3/
-    │       ├── main/         # Current project state
-    │       └── branches/     # Change request branches
-    ├── ollama_engine.py      # LLM interface — cascade analysis
-    ├── branch_builder.py     # Branch creation and diff computation
-    └── api.py                # FastAPI REST endpoints
+    │       ├── main/
+    │       └── branches/
+    ├── ollama_engine.py
+    ├── branch_builder.py
+    └── api.py
 ```
-
----
-
-## Demo System
-
-The demo runs on a fictional optical EO payload: **IRIS-3**
-
-- Customer: ESA
-- Domain: Optical Earth Observation
-- Milestone: CDR
-- 7 User Needs → 14 System Requirements (L1) → V&V Evidence
-- 4 pre-configured scenarios switchable in 1 click:
-  - **Nominal** — system 87% compliant → GO
-  - **Thermal Issue** — critical thermal NCR open → NO-GO
-  - **CDR Ready** — 3 open constraints → GO with constraints
-  - **Launch Ready** — pre-launch state → GO
 
 ---
 
@@ -87,80 +64,110 @@ The demo runs on a fictional optical EO payload: **IRIS-3**
 
 | Layer | Technology |
 |---|---|
-| Frontend | React 18, Vite, Tailwind CSS |
+| Frontend | React 18, Vite, Tailwind CSS, Inter font |
 | 3D Viewer | Three.js r128 |
-| Charts | Recharts |
-| Routing | React Router v6 |
 | Backend | FastAPI, Uvicorn |
-| LLM | Ollama — qwen2.5:14b (local, offline) |
+| LLM | Ollama — qwen2.5:14b (local or remote via ngrok) |
 | PDF Generation | ReportLab |
 | PDF Reading | pypdf |
-| HTTP Client | httpx |
 
 ---
 
-## Requirements
+## Setup — Two Modes
 
-- Node.js >= 18
-- Python >= 3.10
-- Ollama installed with `qwen2.5:14b` model
-- GPU recommended for LLM inference (tested on RTX 3060 12GB)
+### Mode A: Everything on one machine (standard)
 
----
-
-## Setup & Run
-
-### 1. Clone the repository
+**Requirements:** Node.js ≥ 18, Python ≥ 3.10, Ollama with qwen2.5:14b, GPU recommended
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/orbisv.git
-cd orbisv
-```
+# 1. Clone
+git clone https://github.com/Eddicpp/OrbisV-Decision-Oriented-V-V-Intelligence-Platform
+cd OrbisV-Decision-Oriented-V-V-Intelligence-Platform
 
-### 2. Install backend dependencies
-
-```bash
+# 2. Backend
 cd orbisv-backend
 pip install fastapi uvicorn httpx pypdf reportlab python-multipart
-```
-
-### 3. Generate the project PDF
-
-```bash
 python mock_data/generate_pdf.py
-```
+uvicorn api:app --reload --port 8000
 
-This creates `projects/IRIS-3/main/IRIS3_main.pdf` — the single source of truth for the demo.
-
-### 4. Install frontend dependencies
-
-```bash
-cd ../orbisv-frontend
+# 3. Frontend (new terminal)
+cd orbisv-frontend
 npm install
-```
+npm run dev
 
-### 5. Start all services
-
-Open 3 separate terminals:
-
-**Terminal 1 — Ollama (skip if already running):**
-```bash
+# 4. Ollama (new terminal)
 ollama serve
 ```
 
-**Terminal 2 — Backend:**
-```bash
-cd orbisv-backend
-uvicorn api:app --reload --port 8000
+Open `http://localhost:5173`
+
+---
+
+### Mode B: Ollama on a remote/home PC via ngrok
+
+Use this when presenting on a laptop but want to run the LLM on a more powerful machine at home.
+
+#### On the home PC (stays on, runs the GPU):
+
+```powershell
+# Terminal 1 — start Ollama with external access
+$env:OLLAMA_HOST = "0.0.0.0"
+ollama serve
+
+# Terminal 2 — expose with ngrok
+cd path\to\ngrok
+.\ngrok http 11434
 ```
 
-**Terminal 3 — Frontend:**
+Ngrok will show a forwarding URL like:
+```
+Forwarding  https://abc123.ngrok-free.app -> http://localhost:11434
+```
+
+Copy that URL.
+
+#### Configure the backend to use the remote Ollama:
+
+In `orbisv-backend/ollama_engine.py`, change line 8:
+
+```python
+# FROM (local):
+OLLAMA_URL = "http://localhost:11434/api/generate"
+
+# TO (remote):
+OLLAMA_URL = "https://abc123.ngrok-free.app/api/generate"
+```
+
+#### On the presentation laptop:
+
 ```bash
+# Clone and install as normal
+git clone https://github.com/Eddicpp/OrbisV-Decision-Oriented-V-V-Intelligence-Platform
+cd OrbisV-Decision-Oriented-V-V-Intelligence-Platform
+
+cd orbisv-backend
+pip install fastapi uvicorn httpx pypdf reportlab python-multipart
+python mock_data/generate_pdf.py
+uvicorn api:app --reload --port 8000
+
+# new terminal
 cd orbisv-frontend
+npm install
 npm run dev
 ```
 
-Open `http://localhost:5173` in your browser.
+No Ollama needed on the laptop — all LLM inference runs on the home PC.
+
+---
+
+## What runs where (Mode B)
+
+| Service | Runs on |
+|---|---|
+| React frontend | Presentation laptop |
+| FastAPI backend | Presentation laptop |
+| Ollama + qwen2.5:14b | Home PC (RTX 3060) |
+| ngrok tunnel | Home PC |
 
 ---
 
@@ -178,60 +185,36 @@ Open `http://localhost:5173` in your browser.
 
 ---
 
+## Demo System — IRIS-3
+
+Fictional optical EO payload with 4 pre-configured scenarios switchable in 1 click:
+
+| Scenario | State | Decision |
+|---|---|---|
+| Nominal | System 87% compliant | GO |
+| Thermal Issue | Critical thermal NCR open | NO-GO |
+| CDR Ready | 3 open constraints | GO with constraints |
+| Launch Ready | Pre-launch state | NO-GO (shock test missing) |
+
+---
+
 ## Key Features
 
-### Digital Thread Traceability
-Navigate the full chain from user operational needs down to V&V test evidence. Gaps in traceability are explicitly flagged — no hidden assumptions.
+**Digital Thread Traceability** — User needs → requirements → V&V evidence in one place. Gaps explicitly flagged.
 
-### 3D Payload Viewer
-Procedural Three.js model of the IRIS-3 payload. Each subsystem is colored by its V&V compliance status. Hover to inspect details. When a change request modifies geometry, the 3D model updates to reflect the actual structural change.
+**Computed GO/NO-GO** — Readiness score calculated from real test completion, NCR count, and requirement coverage. Not hardcoded.
 
-### GO/NO-GO Decision Support
-Explicit readiness decision with confidence score and per-domain breakdown. Switch between 4 pre-configured scenarios to demonstrate how the platform reacts to different system states.
+**3D Payload Viewer** — Procedural Three.js model. Subsystems colored by V&V compliance. Geometry changes reflected when a change request modifies dimensions.
 
-### AI-Powered Impact Analysis (Ollama)
-Submit any change request in natural language. The local LLM reads the full project PDF as context and returns:
-- Cascade issues with severity (critical / major / minor)
-- Affected requirements and invalidated evidence
-- Missing ECSS tests now required
-- Updated GO/NO-GO assessment
-- Geometry changes reflected on the 3D model
+**AI-Powered Impact Analysis** — Local LLM reads full project PDF as context. Returns cascade issues, affected requirements, missing ECSS tests, updated GO/NO-GO, managerial cost/schedule impact.
 
-All inference runs locally — no internet connection required for the demo.
+**Three diff views** — Technical / Manager / User Needs — each showing main vs branch side by side.
 
-### User Satisfaction Scoring
-Measures how well the current system satisfies each original user operational need using a three-factor model:
-- **Coverage** (30%) — percentage of linked requirements with V&V evidence
-- **Compliance** (50%) — average compliance score of linked requirements
-- **Criticality** (20%) — all critical requirements above threshold
+**Test Calendar** — Gantt timeline of all 27 test activities across subsystems, colored by status, with NCR blocking indicators.
 
-In branch view, shows main vs branch score side by side for each user need.
+**ECSS Checklist** — Per-subsystem validation activities mapped to real standards with direct PDF links to ecss.nl.
 
-### ECSS Checklist
-Per-subsystem validation activities mapped to real ECSS standards with exact clause references and direct links to official PDFs on ecss.nl.
-
----
-
-## Design Principles
-
-- **Offline-capable** — LLM runs locally via Ollama, no cloud dependencies
-- **PDF as source of truth** — all dashboard data derived from structured project PDF
-- **Branch model** — changes never overwrite the main project state
-- **SME-accessible** — imports from CSV/Excel, no MBSE toolchain required
-- **ECSS-aligned** — validation activities referenced to real standards
-
----
-
-## Evaluation Criteria Mapping
-
-| Jury Criterion | OrbisV Feature |
-|---|---|
-| System-Level Integration | PDF aggregates all tool outputs; unified dashboard |
-| Traceability & Consistency | User need → requirement → evidence chain; gap detection |
-| Decision Support Capability | GO/NO-GO with confidence score and blocking issues |
-| Technical Feasibility | Full working PoC, offline, 3 services |
-| User-Centricity | User satisfaction scoring; dual technical/manager view |
-| Innovation | Local LLM cascade analysis + geometry propagation on 3D model |
+**Component Datasheets** — Real components (Teledyne H2RG, Sodern Hydra, Azur Space 3G30C, etc.) with public datasheet links.
 
 ---
 
