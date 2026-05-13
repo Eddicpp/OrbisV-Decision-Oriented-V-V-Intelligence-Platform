@@ -1,5 +1,8 @@
 # OrbisV — Decision-Oriented V&V Intelligence Platform
 
+<img width="1361" height="853" alt="Screenshot 2026-05-13 alle 08 56 38" src="https://github.com/user-attachments/assets/c54e109d-6598-4fb0-b736-f189cac981f1" />
+
+
 > *"From simulation noise to GO/NO-GO confidence"*
 
 OrbisV is a proof-of-concept platform designed to solve a structural problem in space system engineering: the disconnection between user needs, technical requirements, simulation results, and verification & validation evidence at critical decision milestones (PDR, CDR, Launch).
@@ -222,3 +225,15 @@ Fictional optical EO payload with 4 pre-configured scenarios switchable in 1 cli
 
 Space Economy Hackathon — 24h challenge
 *"Decision-Oriented V&V for Optical Payload Systems"*
+
+---
+
+## License & Usage Restrictions
+
+Copyright © 2026 Eduardo Pane. All rights reserved.
+
+This repository and all its contents — including but not limited to source code, architecture, data models, and documentation — are the exclusive intellectual property of the author.
+
+**No permission is granted to use, copy, modify, distribute, sublicense, or incorporate any part of this codebase into other projects, whether commercial or non-commercial, without explicit prior written authorization from the author.**
+
+For licensing inquiries: eduardo.pane04@gmail.com
